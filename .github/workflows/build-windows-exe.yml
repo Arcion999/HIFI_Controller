@@ -40,11 +40,13 @@ jobs:
           @'
           import importlib.util
           import pathlib
+          import sys
           import tempfile
 
           source = pathlib.Path('Peace_EQ_Kontroll.py')
           spec = importlib.util.spec_from_file_location('peace_eq_step22', source)
           module = importlib.util.module_from_spec(spec)
+          sys.modules[spec.name] = module
           spec.loader.exec_module(module)
 
           assert module.STARTUP_ARGUMENT == '--startup'
