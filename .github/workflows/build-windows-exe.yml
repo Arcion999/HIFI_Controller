@@ -22,17 +22,51 @@ jobs:
           python-version: '3.13'
           architecture: 'x64'
 
-      - name: Reconstruct application source
+      - name: Reconstruct Step 22 application source
         shell: pwsh
         run: |
-          $parts = Get-ChildItem 'source_parts\part*.b64' | Sort-Object Name
+          $parts = Get-ChildItem 'source_v22\part*.b64' | Sort-Object Name
           if ($parts.Count -ne 8) {
-            throw "Expected 8 source parts, found $($parts.Count)."
+            throw "Expected 8 Step 22 source parts, found $($parts.Count)."
           }
           $encoded = ($parts | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ''
           [IO.File]::WriteAllBytes('source.gz', [Convert]::FromBase64String($encoded))
           python -c "import gzip,pathlib; pathlib.Path('Peace_EQ_Kontroll.py').write_bytes(gzip.decompress(pathlib.Path('source.gz').read_bytes()))"
           python -m py_compile Peace_EQ_Kontroll.py
+
+      - name: Run Step 22 source checks
+        shell: pwsh
+        run: |
+          @'
+          import importlib.util
+          import pathlib
+          import tempfile
+
+          source = pathlib.Path('Peace_EQ_Kontroll.py')
+          spec = importlib.util.spec_from_file_location('peace_eq_step22', source)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          assert module.STARTUP_ARGUMENT == '--startup'
+          assert '--startup' in module.get_windows_startup_command()
+
+          with tempfile.TemporaryDirectory() as directory:
+              app_data = pathlib.Path(directory)
+              module.APP_DATA_DIRECTORY = app_data
+              module.SETTINGS_PATH = app_data / 'settings.json'
+              expected = module.UserPreferences(
+                  protected_audio_device_id='test-endpoint-id',
+                  protected_audio_device_name='Test DAC',
+                  auto_close_peace=True,
+                  auto_start_peace=True,
+              )
+              ok, message = module.save_user_preferences(expected)
+              assert ok, message
+              assert module.load_user_preferences() == expected
+
+          print('Step 22 persistence and startup checks passed.')
+          '@ | Set-Content -Encoding UTF8 step22_checks.py
+          python step22_checks.py
 
       - name: Install build dependencies
         shell: pwsh
@@ -68,7 +102,7 @@ jobs:
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4
         with:
-          name: Peace-EQ-Kontroll-Windows
+          name: Peace-EQ-Kontroll-Step22-Windows
           path: dist/Peace EQ Kontroll.exe
           if-no-files-found: error
           retention-days: 30
